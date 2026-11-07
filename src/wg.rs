@@ -190,7 +190,10 @@ impl WireGuardTunnel {
                     match self.udp.send_to(packet, self.endpoint).await {
                         Ok(_) => {}
                         Err(e) => {
-                            error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
+                            error!(
+                                "Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}",
+                                e
+                            );
                             continue;
                         }
                     };
@@ -202,7 +205,10 @@ impl WireGuardTunnel {
                                 match self.udp.send_to(packet, self.endpoint).await {
                                     Ok(_) => {}
                                     Err(e) => {
-                                        error!("Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}", e);
+                                        error!(
+                                            "Failed to send decapsulation-instructed packet to WireGuard endpoint: {:?}",
+                                            e
+                                        );
                                         break;
                                     }
                                 };
@@ -235,16 +241,14 @@ impl WireGuardTunnel {
         let private = config.private_key.as_ref().clone();
         let public = *config.endpoint_public_key.as_ref();
 
-        Tunn::new(
+        Ok(Tunn::new(
             private,
             public,
             config.preshared_key,
             config.keepalive_seconds,
             0,
             None,
-        )
-        .map_err(|s| anyhow::anyhow!("{}", s))
-        .context("Failed to initialize boringtun Tunn")
+        ))
     }
 
     /// Determine the inner protocol of the incoming IP packet (TCP/UDP).

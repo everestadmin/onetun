@@ -10,9 +10,9 @@ use crate::events::Bus;
 use crate::tunnel::tcp::TcpPortPool;
 use crate::tunnel::udp::UdpPortPool;
 use crate::virtual_device::VirtualIpDevice;
+use crate::virtual_iface::VirtualInterfacePoll;
 use crate::virtual_iface::tcp::TcpVirtualInterface;
 use crate::virtual_iface::udp::UdpVirtualInterface;
-use crate::virtual_iface::VirtualInterfacePoll;
 use crate::wg::WireGuardTunnel;
 
 pub mod config;
@@ -75,8 +75,12 @@ pub async fn start_tunnels(config: Config, bus: Bus) -> anyhow::Result<()> {
         // Start TCP Virtual Interface
         let port_forwards = config.port_forwards.clone();
         let remote_port_forwards = config.remote_port_forwards.clone();
-        let iface = 
-            TcpVirtualInterface::new(port_forwards, remote_port_forwards, bus, config.source_peer_ip);
+        let iface = TcpVirtualInterface::new(
+            port_forwards,
+            remote_port_forwards,
+            bus,
+            config.source_peer_ip,
+        );
         tokio::spawn(async move { iface.poll_loop(device).await });
     }
 

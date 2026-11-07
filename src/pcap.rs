@@ -1,5 +1,5 @@
-use crate::events::Event;
 use crate::Bus;
+use crate::events::Event;
 use anyhow::Context;
 use smoltcp::time::Instant;
 use tokio::fs::File;
@@ -90,7 +90,7 @@ pub async fn capture(pcap_file: String, bus: Bus) -> anyhow::Result<()> {
         .await
         .context("Failed to write global header to pcap writer")?;
 
-    info!("Capturing WireGuard IP packets to {}", &pcap_file);
+    info!("Capturing WireGuard IP packets to {}", pcap_file);
     loop {
         match endpoint.recv().await {
             Event::InboundInternetPacket(_proto, ip) => {

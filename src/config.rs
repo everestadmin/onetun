@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose::STANDARD};
 use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter};
@@ -5,7 +6,7 @@ use std::fs::read_to_string;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 pub use boringtun::x25519::{PublicKey, StaticSecret};
 
 const DEFAULT_PORT_FORWARD_SOURCE: &str = "127.0.0.1";
@@ -202,7 +203,10 @@ impl Config {
             .collect();
         for port_forward in remote_port_forwards.iter_mut() {
             if port_forward.source.ip() != source_peer_ip {
-                bail!("Remote port forward config <src_host> must match --source-peer-ip ({}), or be omitted.", source_peer_ip);
+                bail!(
+                    "Remote port forward config <src_host> must match --source-peer-ip ({}), or be omitted.",
+                    source_peer_ip
+                );
             }
             port_forward.source = SocketAddr::from((source_peer_ip, port_forward.source.port()));
             port_forward.remote = true;
@@ -302,7 +306,7 @@ fn parse_ip(s: Option<&String>) -> anyhow::Result<IpAddr> {
 }
 
 fn parse_private_key(s: &str) -> anyhow::Result<StaticSecret> {
-    let decoded = base64::decode(s).context("Failed to decode private key")?;
+    let decoded = STANDARD.decode(s).context("Failed to decode private key")?;
     if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
         Ok(StaticSecret::from(bytes))
     } else {
@@ -312,7 +316,9 @@ fn parse_private_key(s: &str) -> anyhow::Result<StaticSecret> {
 
 fn parse_public_key(s: Option<&String>) -> anyhow::Result<PublicKey> {
     let encoded = s.context("Missing public key")?;
-    let decoded = base64::decode(encoded).context("Failed to decode public key")?;
+    let decoded = STANDARD
+        .decode(encoded)
+        .context("Failed to decode public key")?;
     if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
         Ok(PublicKey::from(bytes))
     } else {
@@ -322,7 +328,9 @@ fn parse_public_key(s: Option<&String>) -> anyhow::Result<PublicKey> {
 
 fn parse_preshared_key(s: Option<&String>) -> anyhow::Result<Option<[u8; 32]>> {
     if let Some(s) = s {
-        let decoded = base64::decode(s).context("Failed to decode preshared key")?;
+        let decoded = STANDARD
+            .decode(s)
+            .context("Failed to decode preshared key")?;
         if let Ok::<[u8; 32], _>(bytes) = decoded.try_into() {
             Ok(Some(bytes))
         } else {
@@ -400,17 +408,18 @@ impl PortForwardConfig {
     ///  - Specifying protocols (`PROTO1,PROTO2,...`) is optional and defaults to `TCP`. Values must be separated by commas.
     pub fn from_notation(s: &str, default_source: &str) -> anyhow::Result<Vec<PortForwardConfig>> {
         mod parsers {
+            use nom::IResult;
+            use nom::Parser;
             use nom::branch::alt;
             use nom::bytes::complete::is_not;
             use nom::character::complete::{alpha1, char, digit1};
             use nom::combinator::{complete, map, opt, success};
             use nom::error::ErrorKind;
             use nom::multi::separated_list1;
-            use nom::sequence::{delimited, preceded, separated_pair, tuple};
-            use nom::IResult;
+            use nom::sequence::{delimited, preceded, separated_pair};
 
             fn ipv6(s: &str) -> IResult<&str, &str> {
-                delimited(char('['), is_not("]"), char(']'))(s)
+                delimited(char('['), is_not("]"), char(']')).parse(s)
             }
 
             fn ipv4_or_fqdn(s: &str) -> IResult<&str, &str> {
@@ -431,21 +440,21 @@ impl PortForwardConfig {
             }
 
             fn ip_or_fqdn(s: &str) -> IResult<&str, &str> {
-                alt((ipv6, ipv4_or_fqdn))(s)
+                alt((ipv6, ipv4_or_fqdn)).parse(s)
             }
 
             fn no_ip(s: &str) -> IResult<&str, Option<&str>> {
-                success(None)(s)
+                success(None).parse(s)
             }
 
             fn src_addr(s: &str) -> IResult<&str, (Option<&str>, &str)> {
                 let with_ip = separated_pair(map(ip_or_fqdn, Some), char(':'), port);
-                let without_ip = tuple((no_ip, port));
-                alt((with_ip, without_ip))(s)
+                let without_ip = (no_ip, port);
+                alt((with_ip, without_ip)).parse(s)
             }
 
             fn dst_addr(s: &str) -> IResult<&str, (&str, &str)> {
-                separated_pair(ip_or_fqdn, char(':'), port)(s)
+                separated_pair(ip_or_fqdn, char(':'), port).parse(s)
             }
 
             fn protocol(s: &str) -> IResult<&str, &str> {
@@ -453,7 +462,7 @@ impl PortForwardConfig {
             }
 
             fn protocols(s: &str) -> IResult<&str, Option<Vec<&str>>> {
-                opt(preceded(char(':'), separated_list1(char(','), protocol)))(s)
+                opt(preceded(char(':'), separated_list1(char(','), protocol))).parse(s)
             }
 
             #[allow(clippy::type_complexity)]
@@ -461,12 +470,7 @@ impl PortForwardConfig {
                 s: &str,
             ) -> IResult<&str, ((Option<&str>, &str), (), (&str, &str), Option<Vec<&str>>)>
             {
-                complete(tuple((
-                    src_addr,
-                    map(char(':'), |_| ()),
-                    dst_addr,
-                    protocols,
-                )))(s)
+                complete((src_addr, map(char(':'), |_| ()), dst_addr, protocols)).parse(s)
             }
         }
 

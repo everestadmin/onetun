@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use anyhow::Context;
 use bytes::BytesMut;
+use rand::rng;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
@@ -177,7 +177,7 @@ impl TcpPortPool {
     pub fn new() -> Self {
         let mut inner = TcpPortPoolInner::default();
         let mut ports: Vec<u16> = PORT_RANGE.collect();
-        ports.shuffle(&mut thread_rng());
+        ports.shuffle(&mut rng());
         ports
             .into_iter()
             .for_each(|p| inner.queue.push_back(p) as ());

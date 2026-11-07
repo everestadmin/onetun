@@ -7,8 +7,8 @@ use std::time::Instant;
 use anyhow::Context;
 use bytes::Bytes;
 use priority_queue::double_priority_queue::DoublePriorityQueue;
+use rand::rng;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use tokio::net::UdpSocket;
 
 use crate::config::{PortForwardConfig, PortProtocol};
@@ -60,8 +60,9 @@ pub async fn udp_proxy_server(
                 }
             }
             event = endpoint.recv() => {
-                if let Event::RemoteData(virtual_port, data) = event {
-                    if let Some(peer) = port_pool.get_peer_addr(virtual_port).await {
+                if let Event::RemoteData(virtual_port, data) = event
+                    && let Some(peer) = port_pool.get_peer_addr(virtual_port).await
+                {
                         // Have remote data to send to the local client
                         if let Err(e) = socket.writable().await {
                             error!("[{}] Failed to check if writable: {:?}", virtual_port, e);
@@ -87,7 +88,6 @@ pub async fn udp_proxy_server(
                             }
                         }
                         port_pool.update_last_transmit(virtual_port).await;
-                    }
                 }
             }
         }
@@ -147,7 +147,7 @@ impl UdpPortPool {
     pub fn new() -> Self {
         let mut inner = UdpPortPoolInner::default();
         let mut ports: Vec<u16> = PORT_RANGE.collect();
-        ports.shuffle(&mut thread_rng());
+        ports.shuffle(&mut rng());
         ports
             .into_iter()
             .for_each(|p| inner.queue.push_back(p) as ());
@@ -214,20 +214,20 @@ impl UdpPortPool {
             })
             .context("Virtual port pool is exhausted")?;
 
-        if let Some(old_peer_addr) = inner.peer_addr_by_port.get(&port).copied() {
-            if old_peer_addr != peer_addr {
-                inner.port_by_peer_addr.remove(&old_peer_addr);
-                let old_peer_ip = old_peer_addr.ip();
-                let remove_peer_usage =
-                    if let Some(usage) = inner.peer_port_usage.get_mut(&old_peer_ip) {
-                        usage.remove(&port);
-                        usage.is_empty()
-                    } else {
-                        false
-                    };
-                if remove_peer_usage {
-                    inner.peer_port_usage.remove(&old_peer_ip);
-                }
+        if let Some(old_peer_addr) = inner.peer_addr_by_port.get(&port).copied()
+            && old_peer_addr != peer_addr
+        {
+            inner.port_by_peer_addr.remove(&old_peer_addr);
+            let old_peer_ip = old_peer_addr.ip();
+            let remove_peer_usage = if let Some(usage) = inner.peer_port_usage.get_mut(&old_peer_ip)
+            {
+                usage.remove(&port);
+                usage.is_empty()
+            } else {
+                false
+            };
+            if remove_peer_usage {
+                inner.peer_port_usage.remove(&old_peer_ip);
             }
         }
 

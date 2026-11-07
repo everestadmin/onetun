@@ -1,8 +1,8 @@
+use crate::Bus;
 use crate::config::{PortForwardConfig, PortProtocol};
 use crate::events::Event;
 use crate::virtual_device::VirtualIpDevice;
 use crate::virtual_iface::{VirtualInterfacePoll, VirtualPort};
-use crate::Bus;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -16,14 +16,10 @@ use smoltcp::{
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     net::IpAddr,
-    time::Duration,
     sync::Arc,
+    time::Duration,
 };
-use tokio::{
-    io::AsyncWriteExt,
-    net::TcpStream,
-    sync::Mutex,
-};
+use tokio::{io::AsyncWriteExt, net::TcpStream, sync::Mutex};
 
 const MAX_PACKET: usize = 65536;
 
@@ -43,7 +39,7 @@ impl TcpVirtualInterface {
         port_forwards: Vec<PortForwardConfig>,
         remote_port_forwards: Vec<PortForwardConfig>,
         bus: Bus,
-        source_peer_ip: IpAddr
+        source_peer_ip: IpAddr,
     ) -> Self {
         Self {
             port_forwards: port_forwards
@@ -60,7 +56,9 @@ impl TcpVirtualInterface {
         }
     }
 
-    fn new_server_socket(remote_port_forward: PortForwardConfig) -> anyhow::Result<tcp::Socket<'static>> {
+    fn new_server_socket(
+        remote_port_forward: PortForwardConfig,
+    ) -> anyhow::Result<tcp::Socket<'static>> {
         let rx_data = vec![0u8; MAX_PACKET];
         let tx_data = vec![0u8; MAX_PACKET];
         let tcp_rx_buffer = tcp::SocketBuffer::new(rx_data);
@@ -116,16 +114,17 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
             });
         });
 
-        let mut server_handle_map: HashMap<SocketHandle, (Arc<Mutex<TcpStream>>, PortForwardConfig)> =
-            HashMap::new();
+        let mut server_handle_map: HashMap<
+            SocketHandle,
+            (Arc<Mutex<TcpStream>>, PortForwardConfig),
+        > = HashMap::new();
 
         // Create virtual server for each remote port forward
         for remote_port_forward in self.remote_port_forwards.iter() {
             let (handle, stream) =
                 connect_to_local_service(&mut self.sockets, remote_port_forward).await?;
 
-            server_handle_map
-                .insert(handle, (Arc::new(Mutex::new(stream)), remote_port_forward.clone()));
+            server_handle_map.insert(handle, (Arc::new(Mutex::new(stream)), *remote_port_forward));
         }
 
         // The next time to poll the interface. Can be None for instant poll.
@@ -188,8 +187,9 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
 
                     for (virtual_port, client_handle) in port_client_handle_map.iter() {
                         let client_socket = self.sockets.get_mut::<tcp::Socket>(*client_handle);
-                        if client_socket.can_send() {
-                            if let Some(send_queue) = send_queue.get_mut(virtual_port) {
+                        if client_socket.can_send()
+                            && let Some(send_queue) = send_queue.get_mut(virtual_port)
+                        {
                                 let to_transfer = send_queue.pop_front();
                                 if let Some(to_transfer_slice) = to_transfer.as_deref() {
                                     let total = to_transfer_slice.len();
@@ -210,7 +210,6 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                                 } else if client_socket.state() == tcp::State::CloseWait {
                                     client_socket.close();
                                 }
-                            }
                         }
                         if client_socket.can_recv() {
                             match client_socket.recv(|buffer| (buffer.len(), Bytes::from(buffer.to_vec()))) {
@@ -262,10 +261,10 @@ impl VirtualInterfacePoll for TcpVirtualInterface {
                         if server_socket.can_send() {
                             let stream = stream.lock().await;
                             let mut buf = [0u8; 1024];
-                            if let Ok(n) = stream.try_read(&mut buf) {
-                                if n > 0 {
+                            if let Ok(n) = stream.try_read(&mut buf)
+                                && n > 0
+                            {
                                     let _ = server_socket.send_slice(&buf[..n]);
-                                }
                             }
                         }
                     }
